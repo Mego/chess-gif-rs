@@ -3,7 +3,7 @@ use std::{
     fs::File,
     io::{Cursor, Read, stdin},
     ops::ControlFlow,
-    path::{Path, PathBuf},
+    path::PathBuf,
     str::FromStr,
     sync::LazyLock,
 };
@@ -14,7 +14,7 @@ use gif::{Encoder, Frame, Repeat};
 use image::{ImageReader, Rgba, RgbaImage, imageops};
 use itertools::Itertools;
 use shakmaty::{
-    Board, CastlingMode, Chess, Color, Piece, Position, Role, Square,
+    Board, CastlingMode, Chess, Piece, Position, Square,
     fen::Fen,
     variant::{Variant, VariantPosition},
 };
@@ -37,23 +37,66 @@ fn blank_board() -> RgbaImage {
 }
 
 static PIECE_IMAGES: LazyLock<HashMap<Piece, RgbaImage>> = LazyLock::new(|| {
-    Role::ALL
-        .iter()
-        .flat_map(|&role| {
-            Color::ALL.map(|color| {
-                let piece = Piece { role, color };
-                let fname = Path::new(file!())
-                    .parent()
-                    .unwrap()
-                    .parent()
-                    .unwrap()
-                    .join("resources")
-                    .join(format!("{}.png", piece.char()));
-                let img = ImageReader::open(fname).unwrap().decode().unwrap();
-                (piece, img.into_rgba8())
-            })
-        })
-        .collect()
+    [
+        (
+            Piece::from_char('p').unwrap(),
+            include_bytes!("../resources/p.png").to_vec(),
+        ),
+        (
+            Piece::from_char('r').unwrap(),
+            include_bytes!("../resources/r.png").to_vec(),
+        ),
+        (
+            Piece::from_char('n').unwrap(),
+            include_bytes!("../resources/n.png").to_vec(),
+        ),
+        (
+            Piece::from_char('b').unwrap(),
+            include_bytes!("../resources/b.png").to_vec(),
+        ),
+        (
+            Piece::from_char('q').unwrap(),
+            include_bytes!("../resources/q.png").to_vec(),
+        ),
+        (
+            Piece::from_char('k').unwrap(),
+            include_bytes!("../resources/k.png").to_vec(),
+        ),
+        (
+            Piece::from_char('P').unwrap(),
+            include_bytes!("../resources/P.png").to_vec(),
+        ),
+        (
+            Piece::from_char('R').unwrap(),
+            include_bytes!("../resources/R.png").to_vec(),
+        ),
+        (
+            Piece::from_char('N').unwrap(),
+            include_bytes!("../resources/N.png").to_vec(),
+        ),
+        (
+            Piece::from_char('B').unwrap(),
+            include_bytes!("../resources/B.png").to_vec(),
+        ),
+        (
+            Piece::from_char('Q').unwrap(),
+            include_bytes!("../resources/Q.png").to_vec(),
+        ),
+        (
+            Piece::from_char('K').unwrap(),
+            include_bytes!("../resources/K.png").to_vec(),
+        ),
+    ]
+    .map(|(p, data)| {
+        (
+            p,
+            ImageReader::with_format(Cursor::new(data), image::ImageFormat::Png)
+                .decode()
+                .unwrap()
+                .into_rgba8(),
+        )
+    })
+    .into()
 });
 
 fn render_position(board: &Board, flip: bool) -> RgbaImage {
