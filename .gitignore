@@ -1,0 +1,5 @@
+/target
+*.pgn
+*.gif
+*.png
+!resources/*.png
