@@ -262,7 +262,7 @@ impl GameRenderer {
                 Some(Self::TRANSPARENT_IDX),
             );
             frame.palette = None;
-            frame.delay = 62;
+            frame.delay = 500;
             self.encoder.write_frame(&frame).unwrap();
         }
     }
