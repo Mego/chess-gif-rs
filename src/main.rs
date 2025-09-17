@@ -1,9 +1,9 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::File,
     io::{Cursor, Read, stdin},
     ops::ControlFlow,
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr,
     sync::LazyLock,
 };
@@ -150,21 +150,121 @@ enum Commands {
 }
 
 struct GameRenderer {
-    images: Vec<RgbaImage>,
+    last_image: Option<(Vec<u8>, HashSet<usize>)>,
     flip: bool,
+    encoder: Encoder<File>,
 }
 
 impl GameRenderer {
-    pub fn new(flip: bool) -> Self {
+    const TRANSPARENT_IDX: u8 = 20;
+    const PALETTE: [[u8; 3]; 21] = [
+        [255, 206, 158],
+        [209, 139, 71],
+        [159, 129, 99],
+        [111, 90, 69],
+        [131, 87, 44],
+        [91, 61, 31],
+        [47, 38, 29],
+        [0, 0, 0],
+        [79, 64, 49],
+        [207, 167, 128],
+        [63, 51, 39],
+        [39, 26, 13],
+        [175, 141, 108],
+        [169, 112, 57],
+        [143, 116, 89],
+        [127, 102, 78],
+        [156, 104, 53],
+        [118, 78, 40],
+        [192, 155, 118],
+        [79, 63, 48],
+        [255, 255, 255],
+    ];
+
+    pub fn new(flip: bool, output: &Path) -> Self {
+        let f = File::create(output).unwrap();
+        let mut encoder = Encoder::new(f, 400, 400, Self::PALETTE.as_flattened()).unwrap();
+        encoder.set_repeat(Repeat::Infinite).unwrap();
         Self {
             flip,
-            images: vec![],
+            last_image: None,
+            encoder,
         }
     }
 
     fn render_board(&mut self, pos: &VariantPosition) {
         let board = pos.board();
-        self.images.push(render_position(board, self.flip));
+        let img = render_position(board, self.flip);
+        let indexed_pixels = img
+            .pixels()
+            .map(|p| {
+                Self::PALETTE
+                    .iter()
+                    .position_min_by_key(|pos| {
+                        (pos[0].abs_diff(p[0]) as usize)
+                            + (pos[1].abs_diff(p[1]) as usize)
+                            + (pos[2].abs_diff(p[2]) as usize)
+                    })
+                    .unwrap() as u8
+            })
+            .collect_vec();
+        let transparent_indexes = if let Some((prev_pixels, _)) = &self.last_image {
+            indexed_pixels
+                .iter()
+                .zip(prev_pixels)
+                .positions(|(&curr, &prev)| curr == prev)
+                .collect()
+        } else {
+            HashSet::new()
+        };
+        if let Some((prev_pixels, prev_transparent)) = self
+            .last_image
+            .replace((indexed_pixels, transparent_indexes))
+        {
+            let mut frame = Frame::from_indexed_pixels(
+                400,
+                400,
+                prev_pixels
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, p)| {
+                        if prev_transparent.contains(&i) {
+                            Self::TRANSPARENT_IDX
+                        } else {
+                            p
+                        }
+                    })
+                    .collect_vec(),
+                Some(Self::TRANSPARENT_IDX),
+            );
+            frame.palette = None;
+            frame.delay = 62;
+            self.encoder.write_frame(&frame).unwrap();
+        }
+    }
+
+    fn render_final_frame(&mut self) {
+        if let Some((prev_pixels, prev_transparent)) = self.last_image.take() {
+            let mut frame = Frame::from_indexed_pixels(
+                400,
+                400,
+                prev_pixels
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, p)| {
+                        if prev_transparent.contains(&i) {
+                            Self::TRANSPARENT_IDX
+                        } else {
+                            p
+                        }
+                    })
+                    .collect_vec(),
+                Some(Self::TRANSPARENT_IDX),
+            );
+            frame.palette = None;
+            frame.delay = 62;
+            self.encoder.write_frame(&frame).unwrap();
+        }
     }
 }
 
@@ -242,6 +342,7 @@ impl pgn_reader::Visitor for GameRenderer {
     }
 
     fn end_game(&mut self, _: Self::Movetext) -> Self::Output {
+        self.render_final_frame();
         Ok(())
     }
 }
@@ -255,74 +356,8 @@ fn main() {
                 stdin().read_to_string(&mut input).unwrap();
                 input
             })));
-            let mut renderer = GameRenderer::new(flip);
+            let mut renderer = GameRenderer::new(flip, &output.unwrap_or("game.gif".into()));
             reader.read_game(&mut renderer).unwrap().unwrap().unwrap();
-            let f = File::create(output.unwrap_or("game.gif".into())).unwrap();
-            let mut palette = renderer
-                .images
-                .iter()
-                .flat_map(|f| f.pixels().map(|p| [p.0[0], p.0[1], p.0[2]]))
-                .unique_by(|p| [p[0] / 32, p[1] / 32, p[2] / 32])
-                .collect_vec();
-            palette.push([0xff, 0xff, 0xff]);
-            let transparent_idx = (palette.len() - 1) as u8;
-            let mut enc = Encoder::new(
-                f,
-                400,
-                400,
-                &palette.iter().copied().flatten().collect_vec(),
-            )
-            .unwrap();
-            enc.set_repeat(Repeat::Infinite).unwrap();
-            let images = renderer.images;
-            let last_img_idx = images.len() - 1;
-            let indexed_pixels = images
-                .into_iter()
-                .map(|img| {
-                    img.pixels()
-                        .map(|p| {
-                            palette
-                                .iter()
-                                .position_min_by_key(|pos| {
-                                    (pos[0].abs_diff(p[0]) as usize)
-                                        + (pos[1].abs_diff(p[1]) as usize)
-                                        + (pos[2].abs_diff(p[2]) as usize)
-                                })
-                                .unwrap() as u8
-                        })
-                        .collect_vec()
-                })
-                .collect_vec();
-            indexed_pixels.iter().enumerate().for_each(|(idx, pixels)| {
-                let mut frame = Frame::from_indexed_pixels(
-                    400,
-                    400,
-                    {
-                        if idx > 0 {
-                            let prev_pixels = &indexed_pixels[idx - 1];
-                            pixels
-                                .iter()
-                                .zip(prev_pixels)
-                                .map(
-                                    |(&curr, &prev)| {
-                                        if curr == prev { transparent_idx } else { curr }
-                                    },
-                                )
-                                .collect_vec()
-                        } else {
-                            pixels.clone()
-                        }
-                    },
-                    Some(transparent_idx),
-                );
-                frame.palette = None;
-                if idx == last_img_idx {
-                    frame.delay = 500;
-                } else {
-                    frame.delay = 62;
-                }
-                enc.write_frame(&frame).unwrap();
-            });
         }
         Commands::Position { fen, flip, output } => {
             let img = render_position(&Board::from_str(&fen).unwrap(), flip);
