@@ -3,4 +3,4 @@
 *.gif
 *.png
 !resources/*.png
-!opera.gif
+!examples/*.gif
