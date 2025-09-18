@@ -31,3 +31,7 @@ A chess GIF renderer that supports multiple variants:
 ## Racing Kings
 
 ![A rendered animated GIF image of a horde chess game](examples/racing_kings.gif)
+
+## Crazyhouse
+
+![A rendered animated GIF image of a crazyhouse chess game](examples/crazyhouse.gif)
