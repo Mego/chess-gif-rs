@@ -14,7 +14,7 @@ use gif::{Encoder, Frame, Repeat};
 use image::{ImageReader, Rgba, RgbaImage, imageops};
 use itertools::Itertools;
 use shakmaty::{
-    Board, CastlingMode, Chess, Piece, Position, Square,
+    Bitboard, Board, CastlingMode, Chess, Piece, Position, Square,
     fen::Fen,
     variant::{Variant, VariantPosition},
 };
@@ -304,8 +304,12 @@ impl pgn_reader::Visitor for GameRenderer {
         } else if name == b"Variant" {
             match Variant::from_ascii(value.as_bytes()) {
                 Ok(variant) => {
-                    let curr = tags.clone().unwrap_or(VariantPosition::Chess(Chess::new()));
-                    let setup = curr.to_setup(shakmaty::EnPassantMode::PseudoLegal);
+                    let curr = tags.clone().unwrap_or(VariantPosition::new(variant));
+                    let mut setup = curr.to_setup(shakmaty::EnPassantMode::PseudoLegal);
+                    if variant.uci() == "antichess" {
+                        // antichess requires no castling rights at start, but VariantPosition::to_setup fails to set that correctly
+                        setup.castling_rights = Bitboard::EMPTY;
+                    }
                     let castling_mode = CastlingMode::detect(&setup);
                     let pos = match VariantPosition::from_setup(variant, setup, castling_mode) {
                         Ok(pos) => pos,
@@ -337,7 +341,9 @@ impl pgn_reader::Visitor for GameRenderer {
 
                 ControlFlow::Continue(())
             }
-            Err(err) => ControlFlow::Break(Err(err.into())),
+            Err(err) => {
+                ControlFlow::Break(Err(anyhow::Error::from(err).context(san_plus.to_string())))
+            }
         }
     }
 
