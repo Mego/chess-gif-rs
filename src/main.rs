@@ -13,6 +13,7 @@ use clap::{Parser, Subcommand};
 use gif::{Encoder, Frame, Repeat};
 use image::{ImageReader, Rgba, RgbaImage, imageops};
 use itertools::Itertools;
+use pgn_reader::Skip;
 use shakmaty::{
     Bitboard, Board, CastlingMode, Chess, Piece, Position, Square,
     fen::Fen,
@@ -350,6 +351,13 @@ impl pgn_reader::Visitor for GameRenderer {
     fn end_game(&mut self, _: Self::Movetext) -> Self::Output {
         self.render_final_frame();
         Ok(())
+    }
+
+    fn begin_variation(
+        &mut self,
+        _: &mut Self::Movetext,
+    ) -> ControlFlow<Self::Output, pgn_reader::Skip> {
+        ControlFlow::Continue(Skip(true))
     }
 }
 
