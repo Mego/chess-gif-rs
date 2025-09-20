@@ -329,8 +329,12 @@ impl pgn_reader::Visitor for GameRenderer {
 
 pub fn render_game(pgn: &str, output: &Path, flip: bool) -> io::Result<Option<Result<()>>> {
     let mut reader = pgn_reader::Reader::new(Cursor::new(pgn));
-    let mut renderer = GameRenderer::new(flip, output);
-    reader.read_game(&mut renderer)
+    if !reader.has_more()? {
+        Ok(None)
+    } else {
+        let mut renderer = GameRenderer::new(flip, output);
+        reader.read_game(&mut renderer)
+    }
 }
 
 pub fn render_position(fen: &str, output: &Path, flip: bool) -> Result<(), image::ImageError> {
