@@ -148,7 +148,7 @@ impl GameRenderer {
         [255, 255, 255],
     ];
 
-    pub fn new(flip: bool, output: &Path) -> Self {
+    fn new(flip: bool, output: &Path) -> Self {
         let f = File::create(output).unwrap();
         let mut encoder = Encoder::new(f, 400, 400, Self::PALETTE.as_flattened()).unwrap();
         encoder.set_repeat(Repeat::Infinite).unwrap();
